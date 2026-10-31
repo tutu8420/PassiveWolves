@@ -1,10 +1,10 @@
-# Passive Wolves · 宁静领域
+﻿# Passive Wolves · 宁静领域
 
 一个一键让**已驯服动物**停止攻击的小插件：按一下，狼群、甲龙、鸡、猪都安静下来；再按一下，恢复原样。专门用来解决“把野生生物拖回家，宠物非要把它们咬死”的麻烦。
 
 A tiny Valheim mod that orders your **tamed animals** to stand down. Press once and wolves, lox, boars and chickens stop picking fights; press again and they go back to normal. Made for the moment when your pets try to kill the wild creature you just dragged home.
 
-![Wolf standing next to a dragged-home dolphin](https://cdn.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/wolf-and-dolphin.jpg)
+![Wolf standing next to a dragged-home dolphin](https://gcore.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/wolf-and-dolphin.jpg)
 
 ---
 
@@ -24,9 +24,9 @@ A tiny Valheim mod that orders your **tamed animals** to stand down. Press once 
 - **Configurable panel** on the left edge: position, font size, on/off. Vanilla animals use the game's own translation; modded ones show the prefab name exactly as you typed it.
 - **No per-frame allocations**: one scan per second, names and lists cached, measured **0.07 ms average / 0.27 ms worst** with 17 animals.
 
-![Dolphin and crab living inside a fenced pond, wolves outside](https://cdn.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/dolphin-and-crab.jpg)
+![Dolphin and crab living inside a fenced pond, wolves outside](https://gcore.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/dolphin-and-crab.jpg)
 
-![Dolphin in the pond with wolves nearby](https://cdn.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/pond-with-wolves.jpg)
+![Dolphin in the pond with wolves nearby](https://gcore.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/pond-with-wolves.jpg)
 
 ---
 
@@ -105,3 +105,4 @@ fox_TW,foxcub_TW,grizzlybear_TW,grizzlybearcub_TW,prowler_TW,prowlercub_TW,razor
 GitHub: <https://github.com/tutu8420/PassiveWolves> · 由 **ChineseCanFly** 制作 · MIT
 
 Made by **ChineseCanFly**. If this saved your pets from committing war crimes, a like on Thunderstore goes a long way.
+
