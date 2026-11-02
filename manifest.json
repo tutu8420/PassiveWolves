@@ -1,8 +1,8 @@
 {
   "name": "PassiveWolves",
-  "version_number": "2.1.0",
+  "version_number": "2.2.0",
   "website_url": "https://github.com/tutu8420/PassiveWolves",
-  "description": "One hotkey orders your tamed animals to stand down, with a calm radius and a side panel. 一键让已驯服动物停止攻击，可设宁静半径，左侧面板显示受影响生物。",
+  "description": "One hotkey orders your tamed animals to stand down, plus always-on follow distance and target filters. 一键让已驯服动物停止攻击，常驻跟随距离与目标过滤，可设宁静半径，左侧面板显示受影响生物。",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2351"
   ]

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0
+
+- New always-on section `[Behaviour]`, no hotkey needed:
+  - `Follow Distance` — a following tame stops earlier than the game's hard-coded 3 m (patch on `BaseAI.Follow`).
+  - `Chase Range` — give up a fight once the target is further than N metres from you (0 = vanilla).
+  - `Ignore Targets` — prefab names these tames never treat as enemies.
+  - `Ignore Taming Targets` — never attack a wild creature whose taming has not finished, unless it is already attacking you.
+  - `Assist Only` — only fight back against something already attacking you or one of your tames.
+- Patches are applied one class at a time and each failure is logged on its own, so a game update can only disable the affected behaviour instead of the whole mod.
+- Hotkey, calm radius and panel behave exactly as in 2.1.0.
+
 ## 2.1.0
 
 - Vanilla animals now use the game's own translation in the HUD (Chinese clients see 狼 / 平原牦牛, English clients see Wolf / Lox).

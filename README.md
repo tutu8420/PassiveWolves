@@ -16,6 +16,7 @@ A tiny Valheim mod that orders your **tamed animals** to stand down. Press once 
 - **白名单 / 黑名单**：想只对某几种生效，或永久排除某几种，都能配。
 - **屏幕面板**：左侧可调位置、字号、开关；原版动物显示游戏内译名（中文客户端显示“狼”），模组动物按你填的预制件名原样显示。
 - **零热路径分配**：每秒只扫描一次，名字与名单全部缓存，实测平均 `0.07 ms`、最慢 `0.27 ms`（17 只动物），对帧率没有可感知影响。
+- **常驻行为（不用热键）**：跟随距离（默认 3 = 原版，调大让狼群别贴脸）、追击范围（离你太远就脱战）、无视名单（永远不打某些生物）、不打可驯服生物（保护你正在驯服的目标）、只还手（不主动开团）。
 
 - **One-key standby** (`F9` by default), with an on-screen message and a side panel.
 - **Calm radius**: `0` = no limit, or keep only animals within N meters calm; they resume fighting once they walk out.
@@ -23,6 +24,7 @@ A tiny Valheim mod that orders your **tamed animals** to stand down. Press once 
 - **Whitelist / blacklist** for fine control.
 - **Configurable panel** on the left edge: position, font size, on/off. Vanilla animals use the game's own translation; modded ones show the prefab name exactly as you typed it.
 - **No per-frame allocations**: one scan per second, names and lists cached, measured **0.07 ms average / 0.27 ms worst** with 17 animals.
+- **Always-on behaviour, no hotkey**: follow distance (3 = vanilla, raise it to keep the pack off your heels), chase range (give up a fight too far away), ignore list (never treat certain creatures as enemies), leave taming targets alone, and an assist-only mode that never starts fights.
 
 ![Dolphin and crab living inside a fenced pond, wolves outside](https://gcore.jsdelivr.net/gh/tutu8420/PassiveWolves@main/docs/images/dolphin-and-crab.jpg)
 
@@ -57,6 +59,16 @@ A tiny Valheim mod that orders your **tamed animals** to stand down. Press once 
 | `HUD X (%)` / `HUD Y (%)` | `1` / `45` | 面板位置（屏幕百分比） |
 | `Font Size` | `16` | 面板字号 |
 | `Show Prefab Names` | `false` | 连原版动物也显示原始预制件名（调试用） |
+
+**常驻行为 / Always-on behaviour**（`[Behaviour]` 段，不需要热键）：
+
+| 键 / Key | 默认 | 说明 |
+|---|---|---|
+| `Follow Distance` | `3` | 跟随距离（米）。`3` = 游戏原版（几乎贴脸），调大狼群就保持距离，范围 3–30 |
+| `Chase Range` | `0` | 目标离你超过这个距离就脱战；`0` = 原版行为。宁静模式开启时不生效 |
+| `Ignore Targets` | 空 | 永远不当敌人，例如 `Deer,Boar,Rabbit` |
+| `Ignore Taming Targets` | `true` | 不打「可驯服但还没驯服完」的野生生物；它正在攻击你时例外 |
+| `Assist Only` | `false` | 只还手：对方在打你或你的动物时才反击 |
 
 示例：让 Monstrum 的狐狸、灰熊、潜行者、剃背猪也安静：
 

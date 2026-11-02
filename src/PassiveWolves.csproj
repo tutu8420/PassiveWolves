@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -17,6 +17,10 @@
   <ItemGroup>
     <Reference Include="BepInEx">
       <HintPath>C:\Users\Administrator\AppData\Roaming\Thunderstore Mod Manager\DataFolder\Valheim\profiles\Default\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>C:\Users\Administrator\AppData\Roaming\Thunderstore Mod Manager\DataFolder\Valheim\profiles\Default\BepInEx\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="assembly_valheim">

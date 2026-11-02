@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,14 +6,18 @@ using System.Reflection;
 using System.Text;
 using BepInEx;
 using BepInEx.Configuration;
+using HarmonyLib;
 using UnityEngine;
 
 namespace ChineseCanFly.PassiveWolves
 {
-    [BepInPlugin(Guid, "Passive Wolves", "2.1.0")]
+    [BepInPlugin(Guid, "Passive Wolves", "2.2.0")]
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "ChineseCanFly.PassiveWolves";
+
+        private static Plugin _instance;
+        private static Harmony _harmony;
 
         private static readonly HashSet<string> VanillaTames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -44,6 +48,20 @@ namespace ChineseCanFly.PassiveWolves
         private ConfigEntry<float> _hudY;
         private ConfigEntry<int> _hudFont;
         private ConfigEntry<bool> _hudPrefabNames;
+
+        // Behaviour section: always on, no hotkey.
+        private static ConfigEntry<float> _followDistance;
+        private static ConfigEntry<float> _chaseRange;
+        private static ConfigEntry<string> _ignoreTargets;
+        private static ConfigEntry<bool> _assistOnly;
+        private static ConfigEntry<bool> _ignoreTamingTargets;
+
+        private static readonly List<string> IgnoreList = new List<string>();
+        private static string _ignoreRaw;
+
+        private static readonly Dictionary<MonsterAI, float> ChaseTracked = new Dictionary<MonsterAI, float>();
+        private static readonly List<MonsterAI> ChaseDrop = new List<MonsterAI>();
+        private static readonly Dictionary<Character, string> NameCache = new Dictionary<Character, string>();
 
         private static readonly Dictionary<MonsterAI, Entry> Tracked = new Dictionary<MonsterAI, Entry>();
         private static readonly List<MonsterAI> Drop = new List<MonsterAI>();
@@ -80,6 +98,7 @@ namespace ChineseCanFly.PassiveWolves
 
         private void Awake()
         {
+            _instance = this;
             LoadLanguage();
 
             _hotkey = Config.Bind("General", "Toggle Hotkey", new KeyboardShortcut(KeyCode.F9),
@@ -129,8 +148,60 @@ namespace ChineseCanFly.PassiveWolves
             _hudPrefabNames = Config.Bind("UI", "Show Prefab Names", false,
                 new ConfigDescription(T("HudPrefabNames", "Show raw prefab names instead of translated creature names.")));
 
+            _followDistance = Config.Bind("Behaviour", "Follow Distance", 3f,
+                new ConfigDescription(T("FollowDistance", "How close (m) a following tame may get before it stops. 3 = the game's own behaviour; larger numbers keep the pack further away. Always on, no hotkey."),
+                    new AcceptableValueRange<float>(3f, 30f)));
+
+            _chaseRange = Config.Bind("Behaviour", "Chase Range", 0f,
+                new ConfigDescription(T("ChaseRange", "Give up a fight when the target is further than this (m) away from you. 0 = the game's own behaviour. Does not apply while calm mode is on (that already holds everything)."),
+                    new AcceptableValueRange<float>(0f, 100f)));
+
+            _ignoreTargets = Config.Bind("Behaviour", "Ignore Targets", "",
+                new ConfigDescription(T("IgnoreTargets", "Prefab names these tames never treat as enemies, comma separated, e.g. Deer,Boar,Rabbit. Empty = the game's own behaviour.")));
+
+            _ignoreTamingTargets = Config.Bind("Behaviour", "Ignore Taming Targets", true,
+                new ConfigDescription(T("IgnoreTamingTargets", "Never attack a wild creature that can still be tamed (its taming has not finished), so the pack stops killing the boar or wolf you are taming.")));
+
+            _assistOnly = Config.Bind("Behaviour", "Assist Only", false,
+                new ConfigDescription(T("AssistOnly", "Only fight back against something that is already attacking you or one of your tames. Off = the pack picks its own fights.")));
+
             _passive = _startPassive.Value;
-            Logger.LogInfo("Passive Wolves 2.1.0 loaded. Language: " + _languageName + ", hotkey " + _hotkey.Value);
+            ApplyPatches();
+            Logger.LogInfo("Passive Wolves 2.2.0 loaded. Language: " + _languageName + ", hotkey " + _hotkey.Value);
+        }
+
+        private void ApplyPatches()
+        {
+            try
+            {
+                _harmony = new Harmony(Guid);
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Harmony unavailable, behaviour patches disabled: " + e);
+                return;
+            }
+
+            // Patched one class at a time so a single missing target cannot take the other one down.
+            try
+            {
+                _harmony.PatchAll(typeof(PatchFollowDistance));
+                Logger.LogInfo("Patch applied: follow distance.");
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Follow distance patch failed, using the game's 3 m: " + e);
+            }
+
+            try
+            {
+                _harmony.PatchAll(typeof(PatchIsEnemy));
+                Logger.LogInfo("Patch applied: target filters.");
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Target filter patch failed, targeting stays vanilla: " + e);
+            }
         }
 
         private void Update()
@@ -142,15 +213,14 @@ namespace ChineseCanFly.PassiveWolves
                     SetPassive(!_passive, announce: true);
                 }
 
-                if (_passive)
+                _scanTimer += Time.deltaTime;
+                float interval = Mathf.Max(0.25f, _scanInterval.Value);
+                if (_scanTimer >= interval)
                 {
-                    _scanTimer += Time.deltaTime;
-                    float interval = Mathf.Max(0.25f, _scanInterval.Value);
-                    if (_scanTimer >= interval)
-                    {
-                        _scanTimer = 0f;
-                        Apply(announce: false);
-                    }
+                    _scanTimer = 0f;
+                    SyncLists();
+                    if (_passive) Apply(announce: false);
+                    else MaintainChase();
                 }
             }
             catch (Exception e)
@@ -196,6 +266,8 @@ namespace ChineseCanFly.PassiveWolves
             _passive = on;
             if (on)
             {
+                // Calm mode owns the alert range, so put the chase clamp's originals back first.
+                RestoreChase();
                 Apply(announce);
             }
             else
@@ -436,6 +508,142 @@ namespace ChineseCanFly.PassiveWolves
             return true;
         }
 
+        // ---------------------------------------------------------------
+        // Behaviour section (always on, no hotkey): follow distance,
+        // chase range, target filters. Called from the Harmony patches.
+        // ---------------------------------------------------------------
+
+        internal static float FollowDistanceValue
+        {
+            get { return _followDistance != null ? _followDistance.Value : 3f; }
+        }
+
+        /// <summary>Scope only: does this creature belong to the animals this mod is allowed to touch?</summary>
+        internal static bool InScopePrefab(Character c)
+        {
+            if (c == null) return false;
+            string prefab = PrefabNameCached(c);
+            if (Contains(NeverList, prefab)) return false;
+            if (OnlyList.Count > 0) return Contains(OnlyList, prefab);
+            bool vanilla = _instance != null && _instance._vanilla != null && _instance._vanilla.Value;
+            return (vanilla && VanillaTames.Contains(prefab)) || Contains(CustomList, prefab);
+        }
+
+        /// <summary>The distance at which this follower should stop. 3 = untouched game behaviour.</summary>
+        internal static float StopDistanceFor(BaseAI ai)
+        {
+            float wanted = FollowDistanceValue;
+            if (ai == null || wanted <= 3.05f) return 3f;
+            Character c = ai.GetComponent<Character>();
+            if (c == null || !c.IsTamed() || !InScopePrefab(c)) return 3f;
+            return wanted;
+        }
+
+        private static bool IgnoreFeatureActive()
+        {
+            if (IgnoreList.Count > 0) return true;
+            if (_ignoreTamingTargets != null && _ignoreTamingTargets.Value) return true;
+            if (_assistOnly != null && _assistOnly.Value) return true;
+            return false;
+        }
+
+        /// <summary>Target filters: should this tame refuse to treat b as an enemy?</summary>
+        internal static bool ShouldBlockEnemy(Character a, Character b)
+        {
+            if (a == null || b == null) return false;
+            if (!IgnoreFeatureActive()) return false;
+            if (!a.IsTamed()) return false;
+            if (b.IsPlayer()) return false;
+            if (!InScopePrefab(a)) return false;
+
+            if (IgnoreList.Count > 0 && Contains(IgnoreList, PrefabNameCached(b))) return true;
+
+            if (_ignoreTamingTargets != null && _ignoreTamingTargets.Value
+                && !b.IsTamed() && b.GetComponent<Tameable>() != null
+                && !IsThreatening(b))
+            {
+                // Let the pack defend you: a wild boar that is already charging you is fair game.
+                return true;
+            }
+
+            if (_assistOnly != null && _assistOnly.Value && !IsThreatening(b)) return true;
+
+            return false;
+        }
+
+        /// <summary>Is b already fighting us? Only used by Assist Only.</summary>
+        private static bool IsThreatening(Character b)
+        {
+            MonsterAI ai = b.GetComponent<MonsterAI>();
+            if (ai == null || TargetCreature == null) return false;
+            Character target = TargetCreature.GetValue(ai) as Character;
+            if (target == null) return false;
+            return target.IsPlayer() || target.IsTamed();
+        }
+
+        private static string PrefabNameCached(Character c)
+        {
+            if (c == null) return "";
+            string name;
+            if (NameCache.TryGetValue(c, out name)) return name;
+            name = PrefabName(c);
+            if (NameCache.Count > 1000) NameCache.Clear();
+            NameCache[c] = name;
+            return name;
+        }
+
+        /// <summary>Chase Range: hold the alert radius of active tames at the configured value.</summary>
+        private void MaintainChase()
+        {
+            float range = _chaseRange != null ? _chaseRange.Value : 0f;
+            if (range <= 0f)
+            {
+                RestoreChase();
+                return;
+            }
+
+            List<Character> chars = Character.GetAllCharacters();
+            for (int i = 0; i < chars.Count; i++)
+            {
+                Character c = chars[i];
+                if (c == null || !c.IsTamed() || c.IsDead()) continue;
+                if (!InScopePrefab(c)) continue;
+
+                MonsterAI ai = c.GetComponent<MonsterAI>();
+                if (ai == null) continue;
+
+                if (!ChaseTracked.ContainsKey(ai)) ChaseTracked[ai] = ai.m_alertRange;
+                if (ai.m_alertRange != range) ai.m_alertRange = range;
+            }
+
+            ChaseDrop.Clear();
+            foreach (KeyValuePair<MonsterAI, float> kv in ChaseTracked)
+            {
+                MonsterAI ai = kv.Key;
+                bool keep = false;
+                if (ai != null)
+                {
+                    Character c = ai.GetComponent<Character>();
+                    keep = c != null && c.IsTamed() && !c.IsDead() && InScopePrefab(c);
+                }
+                if (keep) continue;
+                if (ai != null) ai.m_alertRange = kv.Value;
+                ChaseDrop.Add(ai);
+            }
+            for (int i = 0; i < ChaseDrop.Count; i++) ChaseTracked.Remove(ChaseDrop[i]);
+        }
+
+        private static void RestoreChase()
+        {
+            if (ChaseTracked.Count == 0) return;
+            foreach (KeyValuePair<MonsterAI, float> kv in ChaseTracked)
+            {
+                MonsterAI ai = kv.Key;
+                if (ai != null) ai.m_alertRange = kv.Value;
+            }
+            ChaseTracked.Clear();
+        }
+
         private void SyncLists()
         {
             if (!string.Equals(_customRaw, _custom.Value, StringComparison.Ordinal))
@@ -452,6 +660,11 @@ namespace ChineseCanFly.PassiveWolves
             {
                 _neverRaw = _never.Value;
                 Rebuild(NeverList, _neverRaw);
+            }
+            if (_ignoreTargets != null && !string.Equals(_ignoreRaw, _ignoreTargets.Value, StringComparison.Ordinal))
+            {
+                _ignoreRaw = _ignoreTargets.Value;
+                Rebuild(IgnoreList, _ignoreRaw);
             }
         }
 
@@ -568,6 +781,58 @@ namespace ChineseCanFly.PassiveWolves
             {
                 p.Message(MessageHud.MessageType.Center, text);
             }
+        }
+    }
+
+    /// <summary>Follow Distance: the game stops a follower at a hard-coded 3 m (BaseAI.Follow). This stops it earlier when asked.</summary>
+    [HarmonyPatch(typeof(BaseAI), "Follow")]
+    internal static class PatchFollowDistance
+    {
+        private static bool Prefix(BaseAI __instance, GameObject go)
+        {
+            try
+            {
+                if (__instance == null || go == null) return true;
+
+                float stop = Plugin.StopDistanceFor(__instance);
+                if (stop <= 3.05f) return true;
+
+                Vector3 offset = go.transform.position - __instance.transform.position;
+                if (offset.sqrMagnitude < stop * stop)
+                {
+                    // stop short instead of walking into the player's lap
+                    __instance.StopMoving();
+                    return false;
+                }
+            }
+            catch
+            {
+                // never break following if something unexpected changes
+            }
+            return true;
+        }
+    }
+
+    /// <summary>Target filters: Ignore Targets / Ignore Taming Targets / Assist Only.
+    /// BaseAI.IsEnemy is the single gate used both to pick a target and to keep it.</summary>
+    [HarmonyPatch(typeof(BaseAI), "IsEnemy", new[] { typeof(Character), typeof(Character) })]
+    internal static class PatchIsEnemy
+    {
+        private static bool Prefix(Character a, Character b, ref bool __result)
+        {
+            try
+            {
+                if (Plugin.ShouldBlockEnemy(a, b))
+                {
+                    __result = false;
+                    return false;
+                }
+            }
+            catch
+            {
+                // default to the game's own enemy check
+            }
+            return true;
         }
     }
 }
